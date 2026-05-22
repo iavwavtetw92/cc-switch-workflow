@@ -1,0 +1,38 @@
+{
+  "id": "git-daily",
+  "name": "Git 日常开发流",
+  "description": "查看状态、日志、分支，快速掌握仓库全貌",
+  "icon": "🔀",
+  "tags": ["git", "daily"],
+  "version": "1.0",
+  "trigger": {
+    "type": "shortcut",
+    "shortcut": "Ctrl+Shift+G"
+  },
+  "steps": [
+    {
+      "id": "git-status",
+      "name": "查看状态",
+      "type": "terminal",
+      "target": "workbox1",
+      "command": "git status",
+      "waitFor": "none"
+    },
+    {
+      "id": "git-log",
+      "name": "查看日志",
+      "type": "terminal",
+      "target": "workbox2",
+      "command": "git log --oneline -10",
+      "waitFor": "none"
+    },
+    {
+      "id": "git-branch",
+      "name": "查看分支",
+      "type": "terminal",
+      "target": "workbox1",
+      "command": "git branch -a",
+      "waitFor": "complete"
+    }
+  ]
+}

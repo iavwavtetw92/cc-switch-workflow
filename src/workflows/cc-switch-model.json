@@ -1,0 +1,30 @@
+{
+  "id": "cc-switch-model",
+  "name": "CC Switch 模型切换",
+  "description": "列出所有可用模型并等待切换指令",
+  "icon": "🤖",
+  "tags": ["cc-switch", "ai", "model"],
+  "version": "1.0",
+  "trigger": {
+    "type": "shortcut",
+    "shortcut": "Ctrl+Shift+M"
+  },
+  "steps": [
+    {
+      "id": "list-providers",
+      "name": "列出可用模型",
+      "type": "cc-switch",
+      "target": "focused",
+      "command": "list",
+      "waitFor": "complete"
+    },
+    {
+      "id": "notify-user",
+      "name": "提示用户",
+      "type": "notify",
+      "target": "focused",
+      "command": "使用 cc:switch:<模型ID> 切换模型",
+      "waitFor": "none"
+    }
+  ]
+}

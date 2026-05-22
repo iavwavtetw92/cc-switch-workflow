@@ -1,0 +1,22 @@
+{
+  "name": "feishu-mcp",
+  "version": "1.0.0",
+  "description": "飞书MCP服务器 - 集成飞书开放平台API",
+  "main": "server.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.20.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.0"
+  },
+  "config": {
+    "feishu": {
+      "appId": "",
+      "appSecret": ""
+    }
+  }
+}

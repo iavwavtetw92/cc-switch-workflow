@@ -1,0 +1,22 @@
+{
+  "id": "feishu-search",
+  "name": "飞书文档搜索",
+  "description": "在飞书知识库中搜索并展示结果",
+  "icon": "🦅",
+  "tags": ["feishu", "mcp", "search"],
+  "version": "1.0",
+  "steps": [
+    {
+      "id": "mcp-search",
+      "name": "飞书搜索",
+      "type": "mcp",
+      "target": "searchbox1",
+      "command": "feishu_search",
+      "params": {
+        "query": "{{query}}",
+        "limit": 10
+      },
+      "waitFor": "complete"
+    }
+  ]
+}

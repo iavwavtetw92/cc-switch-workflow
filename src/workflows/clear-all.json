@@ -1,0 +1,30 @@
+{
+  "id": "clear-all",
+  "name": "清空所有终端",
+  "description": "清空所有工作框的终端输出",
+  "icon": "🧹",
+  "tags": ["terminal", "clear"],
+  "version": "1.0",
+  "trigger": {
+    "type": "shortcut",
+    "shortcut": "Ctrl+Shift+L"
+  },
+  "steps": [
+    {
+      "id": "clear-workbox1",
+      "name": "清空工作框 1",
+      "type": "terminal",
+      "target": "workbox1",
+      "command": "clear",
+      "waitFor": "none"
+    },
+    {
+      "id": "clear-workbox2",
+      "name": "清空工作框 2",
+      "type": "terminal",
+      "target": "workbox2",
+      "command": "clear",
+      "waitFor": "none"
+    }
+  ]
+}

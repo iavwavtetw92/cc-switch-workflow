@@ -1,0 +1,37 @@
+{
+  "appId": "com.ccswitch.pro",
+  "productName": "CC Switch Pro",
+  "directories": {
+    "output": "release",
+    "buildResources": "resources"
+  },
+  "files": [
+    "dist/**/*",
+    "node_modules/**/*",
+    "package.json"
+  ],
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      }
+    ],
+    "icon": "resources/icon.ico"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "installerIcon": "resources/icon.ico",
+    "uninstallerIcon": "resources/icon.ico",
+    "installerHeaderIcon": "resources/icon.ico"
+  },
+  "linux": {
+    "target": ["deb", "rpm"],
+    "icon": "resources/icons"
+  },
+  "mac": {
+    "target": ["dmg"],
+    "icon": "resources/icon.icns"
+  }
+}

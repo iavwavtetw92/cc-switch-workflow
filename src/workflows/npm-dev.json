@@ -1,0 +1,30 @@
+{
+  "id": "npm-dev",
+  "name": "NPM 开发启动",
+  "description": "安装依赖并启动开发服务器",
+  "icon": "🚀",
+  "tags": ["npm", "dev"],
+  "version": "1.0",
+  "trigger": {
+    "type": "shortcut",
+    "shortcut": "Ctrl+Shift+D"
+  },
+  "steps": [
+    {
+      "id": "npm-install",
+      "name": "安装依赖",
+      "type": "terminal",
+      "target": "workbox1",
+      "command": "npm install",
+      "waitFor": "complete"
+    },
+    {
+      "id": "npm-run-dev",
+      "name": "启动开发服务器",
+      "type": "terminal",
+      "target": "workbox1",
+      "command": "npm run dev",
+      "waitFor": "none"
+    }
+  ]
+}

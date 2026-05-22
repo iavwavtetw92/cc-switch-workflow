@@ -1,0 +1,42 @@
+{
+  "id": "project-init",
+  "name": "项目初始化",
+  "description": "初始化新项目：Git init、安装依赖、查看结构",
+  "icon": "📁",
+  "tags": ["project", "init"],
+  "version": "1.0",
+  "steps": [
+    {
+      "id": "git-init",
+      "name": "Git 初始化",
+      "type": "terminal",
+      "target": "workbox1",
+      "command": "git init",
+      "waitFor": "complete"
+    },
+    {
+      "id": "npm-init",
+      "name": "NPM 初始化",
+      "type": "terminal",
+      "target": "workbox1",
+      "command": "npm install",
+      "waitFor": "complete"
+    },
+    {
+      "id": "list-structure",
+      "name": "查看项目结构",
+      "type": "terminal",
+      "target": "workbox2",
+      "command": "dir /s /b | findstr /v node_modules | findstr /v .git",
+      "waitFor": "none"
+    },
+    {
+      "id": "open-readme",
+      "name": "打开 README",
+      "type": "editor",
+      "target": "learnbox",
+      "command": "# 项目名称\n\n## 概述\n\n## 安装\n\n```bash\nnpm install\n```\n\n## 运行\n\n```bash\nnpm run dev\n```\n",
+      "waitFor": "none"
+    }
+  ]
+}

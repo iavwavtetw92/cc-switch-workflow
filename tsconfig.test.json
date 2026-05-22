@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "moduleResolution": "node",
+    "types": ["node", "vitest/globals"],
+    "paths": {
+      "@core/*": ["./src/core/*"],
+      "@adapters/*": ["./src/adapters/*"],
+      "@renderer/*": ["./src/renderer/*"]
+    }
+  },
+  "include": [
+    "src/**/*.ts",
+    "tests/**/*.ts",
+    "vitest.config.ts"
+  ]
+}

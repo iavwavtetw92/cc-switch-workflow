@@ -1,0 +1,158 @@
+/* 全局样式 */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  background: #1e1e2e;
+  color: #cdd6f4;
+}
+
+/* 暗色主题 */
+:root {
+  --bg-primary: #1e1e2e;
+  --bg-secondary: #313244;
+  --bg-tertiary: #45475a;
+  --text-primary: #cdd6f4;
+  --text-secondary: #a6adc8;
+  --accent: #89b4fa;
+  --accent-hover: #b4befe;
+  --success: #a6e3a1;
+  --warning: #f9e2af;
+  --error: #f38ba8;
+  --border: #45475a;
+}
+
+/* Element Plus暗色主题覆盖 */
+.el-input__wrapper,
+.el-select__wrapper {
+  background: var(--bg-secondary) !important;
+  border-color: var(--border) !important;
+}
+
+.el-input__inner {
+  color: var(--text-primary) !important;
+}
+
+.el-button--primary {
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+}
+
+.el-button--primary:hover {
+  background: var(--accent-hover) !important;
+}
+
+/* 面板样式 */
+.panel {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.panel-header {
+  background: var(--bg-tertiary);
+  padding: 8px 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+}
+
+.panel-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.panel-content {
+  flex: 1;
+  overflow: auto;
+}
+
+/* 状态指示器 */
+.status-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.status-indicator.running {
+  background: rgba(166, 227, 161, 0.2);
+  color: var(--success);
+}
+
+.status-indicator.idle {
+  background: rgba(169, 183, 200, 0.2);
+  color: var(--text-secondary);
+}
+
+.status-indicator.error {
+  background: rgba(243, 139, 168, 0.2);
+  color: var(--error);
+}
+
+/* 终端样式 */
+.terminal-container {
+  height: 100%;
+  background: #11111b;
+  border-radius: 4px;
+}
+
+/* 搜索结果样式 */
+.search-result {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.search-result:hover {
+  background: var(--bg-tertiary);
+}
+
+.search-result-title {
+  font-weight: 500;
+  color: var(--accent);
+}
+
+.search-result-snippet {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+/* 统一输入样式 */
+.unified-input {
+  background: var(--bg-secondary);
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 16px;
+  font-size: 14px;
+  color: var(--text-primary);
+  width: 100%;
+  transition: border-color 0.2s;
+}
+
+.unified-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* 状态栏样式 */
+.status-bar {
+  background: var(--bg-tertiary);
+  padding: 6px 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+}
