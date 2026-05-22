@@ -5,17 +5,15 @@
 
 import { defineStore } from 'pinia'
 
-export type PanelId = 'workbox1' | 'workbox2' | 'learnbox' | 'searchbox1' | 'searchbox2'
+export type PanelId = 'workbox1' | 'workbox2' | 'workbox3' | 'workbox4'
 export type PanelStatus = 'idle' | 'running' | 'error'
-export type PanelType   = 'workbox' | 'learnbox' | 'searchbox'
 
 export interface PanelMeta {
   id:      PanelId
   label:   string
-  type:    PanelType
   visible: boolean
   status:  PanelStatus
-  cwd?:    string
+  cwd:     string
 }
 
 export interface PanelMessage {
@@ -24,12 +22,10 @@ export interface PanelMessage {
   source?: string
 }
 
+// 默认两个工作框，用户可动态增减（最多4个）
 const DEFAULT_PANELS: PanelMeta[] = [
-  { id: 'workbox1',   label: '工作框 1', type: 'workbox',   visible: true, status: 'idle', cwd: 'D:\\' },
-  { id: 'workbox2',   label: '工作框 2', type: 'workbox',   visible: true, status: 'idle', cwd: 'D:\\' },
-  { id: 'learnbox',   label: '学习框',   type: 'learnbox',  visible: true, status: 'idle' },
-  { id: 'searchbox1', label: '搜索 Web', type: 'searchbox', visible: true, status: 'idle' },
-  { id: 'searchbox2', label: '搜索项目', type: 'searchbox', visible: true, status: 'idle' },
+  { id: 'workbox1', label: '工作框 1', visible: true, status: 'idle', cwd: 'D:\\' },
+  { id: 'workbox2', label: '工作框 2', visible: true, status: 'idle', cwd: 'D:\\' },
 ]
 
 export const usePanelStore = defineStore('panel', {
@@ -48,9 +44,9 @@ export const usePanelStore = defineStore('panel', {
       return state.panels.find(p => p.id === state.focusedPanelId)
     },
 
-    /** 所有工作框面板 */
+    /** 所有工作框面板（即全部面板） */
     workboxPanels(state): PanelMeta[] {
-      return state.panels.filter(p => p.type === 'workbox')
+      return state.panels
     },
 
     /** 可见面板列表 */
