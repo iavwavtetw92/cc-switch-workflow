@@ -72,6 +72,7 @@ const shortCwd = computed(() => {
 // ── IPC listeners (stored for cleanup) ───────────────────────
 const onData = (pid: string, data: string) => {
   if (pid !== ptyIdVal) return
+  console.log(`[WorkBox:${props.id}] PTY→xterm`, data.length, 'bytes')
   term?.write(data)
 }
 const onExit = (pid: string) => {
@@ -118,13 +119,20 @@ function initXterm() {
   // open() 后需要等下一帧 DOM 稳定再 fit
   requestAnimationFrame(() => {
     fitAddon?.fit()
+    const dims = { cols: term?.cols, rows: term?.rows,
+      w: xtermEl.value?.offsetWidth, h: xtermEl.value?.offsetHeight }
+    console.log(`[WorkBox:${props.id}] xterm fit done`, dims)
+    if (!dims.h) console.error(`[WorkBox:${props.id}] ⚠️ xterm 容器高度为 0，PTY 将无法正常工作！`)
     term?.focus()
   })
 
-  // 用户在 xterm 里的键盘输入 → 直接发给 PTY（闭包访问模块级 ptyIdVal）
+  // 用户在 xterm 里的键盘输入 → 直接发给 PTY
   term.onData((data: string) => {
+    console.log(`[WorkBox:${props.id}] xterm→PTY`, JSON.stringify(data), 'ptyId=', ptyIdVal)
     if (ptyIdVal) {
       window.electronAPI.terminalInput({ ptyId: ptyIdVal, data })
+    } else {
+      console.warn(`[WorkBox:${props.id}] ⚠️ 无 ptyId，输入丢弃`)
     }
   })
 
