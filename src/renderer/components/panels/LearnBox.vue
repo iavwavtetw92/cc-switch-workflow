@@ -7,8 +7,12 @@
         <input type="checkbox" v-model="syncToFeishu" />
         <span>同步飞书</span>
       </label>
+      <SkillPicker
+        v-model="activeSkillId"
+        panel-type="learnbox"
+        @run="onAskAi"
+      />
       <button class="lb-btn save-btn" @click="saveNote">保存</button>
-      <button class="lb-btn clear-btn" @click="clearNote">清空</button>
     </div>
 
     <!-- 编辑器区域 -->
@@ -18,27 +22,56 @@
       placeholder="开始记录你的学习内容...（支持 Markdown）"
     ></textarea>
 
+    <!-- AI 面板（插入到编辑器下方） -->
+    <AiPanel
+      :visible="aiVisible"
+      :text="aiText"
+      :is-streaming="isStreaming"
+      :skill-name="activeSkillName"
+      model-label="CC Switch AI"
+      :show-insert="true"
+      @close="aiVisible = false"
+      @insert="insertAiResult"
+    />
+
     <!-- 保存提示 -->
     <div class="save-toast" v-if="savedToast">✓ 已保存</div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useWorkflowUiStore } from '../../stores/workflowUiStore'
+import { useAi }              from '../../composables/useAi'
+import AiPanel                from '../shared/AiPanel.vue'
+import SkillPicker            from '../shared/SkillPicker.vue'
+import type { Skill }         from '@core/types/ai.types'
 
 const props = defineProps<{ id: string }>()
 
 const workflowStore = useWorkflowUiStore()
+const { isStreaming, streamText, chatStream, buildMessages, getSkills } = useAi()
 
-const content     = ref('')
-const syncToFeishu = ref(false)
-const savedToast  = ref(false)
+const content       = ref('')
+const syncToFeishu  = ref(false)
+const savedToast    = ref(false)
+const activeSkillId = ref<string | undefined>()
+const aiVisible     = ref(false)
+const aiText        = ref('')
+const skills        = ref<Skill[]>([])
 
-onMounted(() => {
+const activeSkillName = computed(() =>
+  skills.value.find(s => s.id === activeSkillId.value)?.name
+)
+
+onMounted(async () => {
   const saved = localStorage.getItem(`learnbox-content-${props.id}`)
   content.value = saved ?? '# 学习笔记\n\n开始记录你的学习内容...\n'
+  skills.value = (await getSkills()).filter(s => s.panelTypes.includes('learnbox'))
 })
+
+// 同步 AI 流式文本
+watch(streamText, (val) => { aiText.value = val })
 
 function saveNote() {
   localStorage.setItem(`learnbox-content-${props.id}`, content.value)
@@ -56,11 +89,25 @@ function saveNote() {
   }
 }
 
-function clearNote() {
-  content.value = ''
+/** 触发 AI 技能 */
+async function onAskAi(skillId: string) {
+  activeSkillId.value = skillId
+  aiText.value = ''
+  aiVisible.value = true
+
+  const messages = buildMessages('请处理以上笔记内容', content.value)
+  await chatStream(messages, skillId)
 }
 
-// 监听工作流分发的面板消息（mcp-result / data）
+/** 将 AI 结果追加到笔记末尾 */
+function insertAiResult(text: string) {
+  const skill = skills.value.find(s => s.id === activeSkillId.value)
+  content.value += `\n\n---\n> 🤖 AI ${skill?.name ?? '分析'}\n\n${text}\n`
+  saveNote()
+  aiVisible.value = false
+}
+
+// 监听工作流分发的面板消息
 watch(
   () => workflowStore.panelMessages[props.id],
   (msg) => {
@@ -126,8 +173,6 @@ watch(
 .lb-btn:hover { background: #313244; }
 .save-btn { border-color: #89b4fa44; color: #89b4fa; }
 .save-btn:hover { border-color: #89b4fa; background: #1e3a5f; }
-.clear-btn { border-color: #f38ba844; color: #f38ba8; }
-.clear-btn:hover { border-color: #f38ba8; background: #3a1e1e; }
 
 /* ── 编辑器 ─────────────────────────────────────────────── */
 .editor-area {
@@ -141,6 +186,7 @@ watch(
   font-family: 'Consolas', 'Fira Code', monospace;
   resize: none;
   outline: none;
+  min-height: 0;
 }
 .editor-area::placeholder { color: #45475a; }
 
@@ -156,6 +202,7 @@ watch(
   padding: 4px 12px;
   border-radius: 6px;
   animation: fadeInOut 1.5s ease;
+  pointer-events: none;
 }
 
 @keyframes fadeInOut {

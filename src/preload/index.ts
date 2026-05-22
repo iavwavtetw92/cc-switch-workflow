@@ -67,6 +67,18 @@ const electronAPI = {
     ipcRenderer.invoke('project:search', options),
 
   // --------------------------------------------------------
+  // AI 增强（通过 CC Switch provider）
+  // --------------------------------------------------------
+  aiSkills: () =>
+    ipcRenderer.invoke('ai:skills'),
+
+  aiChat: (options: { messages: any[]; skillId?: string; maxTokens?: number }) =>
+    ipcRenderer.invoke('ai:chat', options),
+
+  aiChatStream: (options: { sessionId: string; messages: any[]; skillId?: string; maxTokens?: number }) =>
+    ipcRenderer.invoke('ai:chat-stream', options),
+
+  // --------------------------------------------------------
   // 事件订阅（Main → Renderer 推送）
   // 白名单控制允许监听的 channel
   // --------------------------------------------------------
@@ -82,6 +94,9 @@ const electronAPI = {
       'workflow:step-done',
       'workflow:done',
       'panel-reattached',
+      'ai:stream-chunk',
+      'ai:stream-done',
+      'ai:stream-error',
     ]
     if (!allowed.includes(channel)) return
     // 包装函数：过滤掉 Electron 的 event 参数

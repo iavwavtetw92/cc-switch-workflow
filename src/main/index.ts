@@ -4,16 +4,21 @@
 
 import { app, BrowserWindow } from 'electron'
 import { join } from 'path'
-import { PtyService } from './services/PtyService'
+import { PtyService }            from './services/PtyService'
+import { AiService }             from './services/AiService'
+import { CcSwitchAdapter }       from '../adapters/cc-switch/CcSwitchAdapter'
 import { registerTerminalHandlers } from './ipc/terminalHandler'
 import { registerWorkflowHandlers } from './ipc/workflowHandler'
 import { registerCcSwitchHandlers } from './ipc/ccSwitchHandler'
 import { registerSearchHandlers }   from './ipc/searchHandler'
+import { registerAiHandlers }       from './ipc/aiHandler'
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
 
 let mainWindow: BrowserWindow | null = null
-const ptyService = new PtyService()
+const ptyService   = new PtyService()
+const ccSwitch     = new CcSwitchAdapter()
+const aiService    = new AiService(ccSwitch)
 
 // --------------------------------------------------------
 // 创建主窗口
@@ -64,6 +69,9 @@ function registerAllIpcHandlers(): void {
 
   // 项目搜索
   registerSearchHandlers()
+
+  // AI 增强（通过 CC Switch provider 调用模型）
+  registerAiHandlers(aiService, () => mainWindow?.webContents ?? null)
 }
 
 // --------------------------------------------------------

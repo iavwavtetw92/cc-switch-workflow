@@ -13,6 +13,13 @@
       <button class="search-btn" @click="performSearch" :disabled="loading">
         {{ loading ? '搜索中…' : (mode === 'web' ? '搜索' : '查找') }}
       </button>
+      <!-- 搜索完成后显示 AI 汇总按钮 -->
+      <SkillPicker
+        v-if="results.length > 0"
+        v-model="activeSkillId"
+        panel-type="searchbox"
+        @run="onAiSummarize"
+      />
     </div>
 
     <!-- 项目路径（仅 project 模式） -->
@@ -26,6 +33,17 @@
         @change="savePath"
       />
     </div>
+
+    <!-- AI 汇总卡片（固定在结果上方） -->
+    <AiPanel
+      :visible="aiVisible"
+      :text="aiText"
+      :is-streaming="isStreaming"
+      skill-name="AI 汇总"
+      model-label="CC Switch AI"
+      :show-insert="false"
+      @close="aiVisible = false"
+    />
 
     <!-- 搜索结果 -->
     <div class="search-results">
@@ -61,6 +79,9 @@
 <script setup lang="ts">
 import { ref, watch, onMounted } from 'vue'
 import { useWorkflowUiStore } from '../../stores/workflowUiStore'
+import { useAi }              from '../../composables/useAi'
+import AiPanel                from '../shared/AiPanel.vue'
+import SkillPicker            from '../shared/SkillPicker.vue'
 
 const props = defineProps<{
   id: string
@@ -68,13 +89,17 @@ const props = defineProps<{
 }>()
 
 const workflowStore = useWorkflowUiStore()
+const { isStreaming, streamText, chatStream, buildMessages } = useAi()
 
-const searchQuery = ref('')
-const lastQuery   = ref('')
-const results     = ref<SearchResult[]>([])
-const searched    = ref(false)
-const loading     = ref(false)
-const projectPath = ref('D:\\')
+const searchQuery  = ref('')
+const lastQuery    = ref('')
+const results      = ref<SearchResult[]>([])
+const searched     = ref(false)
+const loading      = ref(false)
+const projectPath  = ref('D:\\')
+const activeSkillId = ref<string | undefined>()
+const aiVisible    = ref(false)
+const aiText       = ref('')
 
 interface SearchResult {
   title:   string
@@ -84,6 +109,9 @@ interface SearchResult {
   file?:   string
   line?:   number
 }
+
+// 同步 AI 流式文本
+watch(streamText, (val) => { aiText.value = val })
 
 onMounted(() => {
   const saved = localStorage.getItem('project-path')
@@ -101,6 +129,7 @@ async function performSearch() {
   loading.value  = true
   searched.value = true
   lastQuery.value = query
+  aiVisible.value = false   // 关闭上次 AI 汇总
 
   try {
     if (props.mode === 'web') {
@@ -113,31 +142,25 @@ async function performSearch() {
   }
 }
 
-// Web 搜索 — 构造 DuckDuckGo 搜索链接并用 IPC 打开
+// Web 搜索 — 构造 DuckDuckGo 搜索链接
 async function webSearch(query: string): Promise<SearchResult[]> {
   const url = `https://duckduckgo.com/?q=${encodeURIComponent(query)}`
-  // 用 Electron shell 打开外部浏览器
-  window.electronAPI?.on('panel-reattached', () => {})  // noop to ensure api exists
-  if (window.electronAPI) {
-    // 返回一个"点击打开"的结果
-    return [{
-      title: `在浏览器中搜索: ${query}`,
-      snippet: url,
-      url,
-      source: 'DuckDuckGo',
-    }]
-  }
-  return []
+  return [{
+    title:   `在浏览器中搜索: ${query}`,
+    snippet: url,
+    url,
+    source:  'DuckDuckGo',
+  }]
 }
 
-// 项目搜索 — 通过 IPC 调用主进程 ripgrep / fs 搜索
+// 项目搜索 — 通过 IPC 调用主进程 fs 搜索
 async function projectSearch(query: string): Promise<SearchResult[]> {
   try {
     const raw = await (window.electronAPI as any)?.projectSearch?.({
       query,
       path: projectPath.value,
     })
-    if (!raw) return mockProjectResults(query)
+    if (!raw) return []
     return (raw as any[]).map(r => ({
       title:   (r.file as string)?.split(/[/\\]/).pop() ?? r.file,
       snippet: (r.content as string)?.substring(0, 120) ?? '',
@@ -146,27 +169,35 @@ async function projectSearch(query: string): Promise<SearchResult[]> {
       line:    r.line,
     }))
   } catch {
-    return mockProjectResults(query)
+    return []
   }
 }
 
-function mockProjectResults(query: string): SearchResult[] {
-  return [{
-    title:   `搜索: ${query}`,
-    snippet: '项目搜索功能需要在主进程注册 projectSearch IPC Handler（使用 ripgrep 或 fs.readdir）',
-    source:  '提示',
-  }]
+/** AI 汇总搜索结果 */
+async function onAiSummarize(skillId: string) {
+  activeSkillId.value = skillId
+  aiText.value = ''
+  aiVisible.value = true
+
+  // 将所有结果拼装成上下文
+  const context = results.value
+    .map(r => `【${r.title}】\n${r.snippet}${r.source ? `\n来源: ${r.source}` : ''}`)
+    .join('\n\n')
+
+  const messages = buildMessages(
+    `搜索关键词: "${lastQuery.value}"，请汇总以上搜索结果的关键信息`,
+    context,
+  )
+  await chatStream(messages, skillId)
 }
 
 function selectResult(result: SearchResult) {
-  // 点击 Web 结果 → 打开链接
   if (result.url) {
-    // Electron 内打开外部链接
     ;(window as any).open?.(result.url, '_blank')
     return
   }
 
-  // 点击项目搜索结果 → 发送到学习框
+  // 项目搜索结果 → 发送到学习框
   workflowStore.sendToPanel('learnbox', {
     type:    'data',
     content: `\`\`\`\n${result.snippet}\n\`\`\``,
@@ -215,6 +246,7 @@ watch(
   padding: 8px 10px;
   background: #181825;
   border-bottom: 1px solid #313244;
+  flex-wrap: wrap;
 }
 
 .search-icon {
@@ -224,6 +256,7 @@ watch(
 
 .search-input {
   flex: 1;
+  min-width: 120px;
   background: #11111b;
   border: 1px solid #313244;
   border-radius: 5px;
@@ -278,6 +311,7 @@ watch(
   flex: 1;
   overflow-y: auto;
   padding: 6px;
+  min-height: 0;
 }
 
 .search-loading {

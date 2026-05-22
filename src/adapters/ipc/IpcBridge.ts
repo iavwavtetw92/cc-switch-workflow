@@ -38,6 +38,11 @@ export interface ElectronAPI {
   // Project Search
   projectSearch(options: { query: string; path: string }): Promise<Array<{ file: string; line: number; content: string }>>
 
+  // AI (via CC Switch provider)
+  aiSkills(): Promise<import('@core/types/ai.types').Skill[]>
+  aiChat(options: { messages: import('@core/types/ai.types').AiMessage[]; skillId?: string; maxTokens?: number }): Promise<{ success: boolean; content: string; error?: string }>
+  aiChatStream(options: { sessionId: string; messages: import('@core/types/ai.types').AiMessage[]; skillId?: string; maxTokens?: number }): Promise<{ success: boolean; error?: string }>
+
   // Event listeners
   on(channel: string, callback: (...args: any[]) => void): void
   off(channel: string, callback: (...args: any[]) => void): void
