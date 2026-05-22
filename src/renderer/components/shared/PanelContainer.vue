@@ -1,149 +1,160 @@
 <template>
-  <div class="panel-container" :class="{ detached: isDetached }">
-    <div class="panel-header">
-      <span class="panel-title">{{ title }}</span>
+  <div
+    class="panel-container"
+    :class="{
+      'is-focused': panelStore.focusedPanelId === id,
+      'is-hidden':  !meta?.visible,
+    }"
+  >
+    <!-- 面板头部 -->
+    <div class="panel-header" @click="panelStore.setFocused(id as any)">
+      <span class="panel-title">{{ meta?.label ?? title }}</span>
+
       <div class="panel-actions">
-        <span :class="['status-badge', status]">
-          {{ statusText }}
+        <!-- 状态 badge -->
+        <span :class="['status-badge', meta?.status ?? 'idle']">
+          {{ STATUS_TEXT[meta?.status ?? 'idle'] }}
         </span>
-        <el-button
-          v-if="detachable && !isDetached"
-          size="small"
-          text
-          @click="detachPanel"
-        >
-          ⛶ 分离
-        </el-button>
-        <el-button
-          v-if="isDetached"
-          size="small"
-          text
-          @click="closeDetached"
-        >
-          ✕ 关闭
-        </el-button>
+
+        <!-- 工作目录（仅 workbox） -->
+        <span v-if="meta?.cwd" class="panel-cwd" :title="meta.cwd">
+          {{ cwdShort }}
+        </span>
+
+        <!-- 最小化 / 恢复 -->
+        <button class="ph-btn" :title="meta?.visible ? '最小化' : '展开'" @click.stop="panelStore.toggleVisible(id as any)">
+          {{ meta?.visible ? '─' : '□' }}
+        </button>
       </div>
     </div>
-    <div class="panel-content" @click="focusPanel">
-      <slot></slot>
+
+    <!-- 内容区 -->
+    <div v-show="meta?.visible !== false" class="panel-content">
+      <slot />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { computed } from 'vue'
 import { usePanelStore } from '../../stores/panelStore'
+import type { PanelId } from '../../stores/panelStore'
+
+const STATUS_TEXT = {
+  idle:    '空闲',
+  running: '运行中',
+  error:   '错误',
+} as const
 
 const props = defineProps<{
-  id: string
-  title: string
-  type: string
+  id:         string
+  title:      string
+  type:       string
   detachable?: boolean
 }>()
 
-const emit = defineEmits(['detached', 'closed'])
-
 const panelStore = usePanelStore()
-const isDetached = ref(false)
+const meta       = computed(() => panelStore.getPanelById(props.id))
 
-const status = computed(() => panelStore.panelStates[props.id]?.status || 'idle')
-
-const statusText = computed(() => {
-  const texts = {
-    idle: '空闲',
-    running: '执行中',
-    waiting: '等待输入',
-    error: '错误'
-  }
-  return texts[status.value] || '未知'
+const cwdShort = computed(() => {
+  const cwd = meta.value?.cwd ?? ''
+  const parts = cwd.replace(/\\/g, '/').split('/')
+  return parts.length > 2 ? `…/${parts.slice(-2).join('/')}` : cwd
 })
-
-function focusPanel() {
-  panelStore.setFocusedPanel(props.id)
-}
-
-async function detachPanel() {
-  const result = await window.electronAPI?.detachPanel(props.id, props.type)
-  if (result?.success) {
-    isDetached.value = true
-    emit('detached', props.id)
-  }
-}
-
-function closeDetached() {
-  emit('closed', props.id)
-}
 </script>
 
 <style scoped>
 .panel-container {
   display: flex;
   flex-direction: column;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
+  background: #11111b;
+  border: 1px solid #313244;
   border-radius: 8px;
   overflow: hidden;
   height: 100%;
+  transition: border-color 0.15s;
 }
 
-.panel-container.detached {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 1000;
+.panel-container.is-focused {
+  border-color: #89b4fa;
 }
 
+.panel-container.is-hidden {
+  /* 最小化时只保留 header */
+  height: auto;
+  flex: 0 0 auto;
+}
+
+/* ── 头部 ─────────────────────────────────────────────── */
 .panel-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 8px 12px;
-  background: var(--bg-tertiary);
-  border-bottom: 1px solid var(--border);
+  justify-content: space-between;
+  padding: 5px 10px;
+  background: #181825;
+  border-bottom: 1px solid #313244;
+  cursor: pointer;
+  user-select: none;
+  min-height: 30px;
+  gap: 8px;
 }
 
 .panel-title {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  color: #cdd6f4;
+  flex-shrink: 0;
 }
 
 .panel-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  margin-left: auto;
 }
 
+/* ── 状态 badge ─────────────────────────────────────── */
 .status-badge {
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 12px;
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
 }
 
-.status-badge.running {
-  background: rgba(166, 227, 161, 0.2);
-  color: var(--success);
+.status-badge.idle    { background: #31324466; color: #585b70; }
+.status-badge.running { background: #a6e3a122; color: #a6e3a1; }
+.status-badge.error   { background: #f38ba822; color: #f38ba8; }
+
+/* ── 目录 ───────────────────────────────────────────── */
+.panel-cwd {
+  font-family: monospace;
+  font-size: 11px;
+  color: #f9e2af88;
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.status-badge.idle {
-  background: rgba(169, 183, 200, 0.2);
-  color: var(--text-secondary);
+/* ── 操作按钮 ───────────────────────────────────────── */
+.ph-btn {
+  background: none;
+  border: 1px solid #31324466;
+  border-radius: 3px;
+  color: #585b70;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 1px 5px;
+  transition: all 0.1s;
+  line-height: 1;
 }
+.ph-btn:hover { color: #cdd6f4; border-color: #585b70; }
 
-.status-badge.waiting {
-  background: rgba(249, 226, 175, 0.2);
-  color: var(--warning);
-}
-
-.status-badge.error {
-  background: rgba(243, 139, 168, 0.2);
-  color: var(--error);
-}
-
+/* ── 内容区 ─────────────────────────────────────────── */
 .panel-content {
   flex: 1;
-  overflow: auto;
+  overflow: hidden;
+  min-height: 0;
 }
 </style>

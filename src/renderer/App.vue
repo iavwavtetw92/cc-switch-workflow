@@ -42,27 +42,26 @@
 
 <script setup lang="ts">
 import { onMounted, onUnmounted } from 'vue'
-import { useLayoutStore }       from './stores/layoutStore'
-import { useWorkflowUiStore }   from './stores/workflowUiStore'
-import CentralController        from './components/central/CentralController.vue'
-import PanelContainer           from './components/shared/PanelContainer.vue'
-import WorkBox                  from './components/panels/WorkBox.vue'
-import LearnBox                 from './components/panels/LearnBox.vue'
-import SearchBox                from './components/panels/SearchBox.vue'
-import StatusBar                from './components/shared/StatusBar.vue'
-import WorkflowPicker           from './components/workflow/WorkflowPicker.vue'
-import { IpcBridge }            from '@adapters/ipc/IpcBridge'
-import type { Workflow }        from '@core/types/workflow.types'
+import { usePanelStore }         from './stores/panelStore'
+import { useWorkflowUiStore }    from './stores/workflowUiStore'
+import CentralController         from './components/central/CentralController.vue'
+import PanelContainer            from './components/shared/PanelContainer.vue'
+import WorkBox                   from './components/panels/WorkBox.vue'
+import LearnBox                  from './components/panels/LearnBox.vue'
+import SearchBox                 from './components/panels/SearchBox.vue'
+import StatusBar                 from './components/shared/StatusBar.vue'
+import WorkflowPicker            from './components/workflow/WorkflowPicker.vue'
+import { IpcBridge }             from '@adapters/ipc/IpcBridge'
+import type { Workflow }         from '@core/types/workflow.types'
 
-const layoutStore     = useLayoutStore()
+const panelStore      = usePanelStore()
 const workflowUiStore = useWorkflowUiStore()
 
-// ── 工作流操作 ─────────────────────────────────────────────
+// ── 工作流 ─────────────────────────────────────────────────
 let bridge: IpcBridge | null = null
 
 async function getBridge(): Promise<IpcBridge> {
   if (bridge) return bridge
-  // 等待 electronAPI 就绪
   for (let i = 0; i < 30; i++) {
     if (window.electronAPI) break
     await new Promise(r => setTimeout(r, 100))
@@ -75,8 +74,7 @@ async function loadWorkflows() {
   workflowUiStore.setLoading(true)
   try {
     const b = await getBridge()
-    const list = await b.workflowList()
-    workflowUiStore.setWorkflows(list)
+    workflowUiStore.setWorkflows(await b.workflowList())
   } catch (err) {
     console.error('[App] 加载工作流失败:', err)
   } finally {
@@ -87,33 +85,35 @@ async function loadWorkflows() {
 async function handleWorkflowRun(wf: Workflow) {
   if (workflowUiStore.isRunning) return
   workflowUiStore.closePicker()
-  const localExecId = `exec-${Date.now()}`
-  workflowUiStore.startExecution(localExecId, wf)
+  const execId = `exec-${Date.now()}`
+  workflowUiStore.startExecution(execId, wf)
 
   for (const step of wf.steps) {
     if (step.type === 'terminal' || step.type === 'editor' || step.type === 'search') {
-      workflowUiStore.sendToPanel(step.target === 'auto' ? 'workbox1' : step.target, {
+      const target = step.target === 'auto' ? 'workbox1' : step.target
+      // 同时通知 panelStore（新路径）和 workflowUiStore（兼容旧路径）
+      panelStore.sendToPanel(target, {
         type:    step.type === 'terminal' ? 'command' : 'data',
         content: step.command,
         source:  wf.id,
       })
     }
-    if (step.type === 'delay' && step.delayMs) {
-      await new Promise(r => setTimeout(r, step.delayMs))
+    if ((step as any).delayMs) {
+      await new Promise(r => setTimeout(r, (step as any).delayMs))
     }
   }
 
-  workflowUiStore.finishExecution(localExecId, true)
+  workflowUiStore.finishExecution(execId, true)
   setTimeout(() => workflowUiStore.clearExecution(), 3000)
 }
 
 onMounted(async () => {
-  layoutStore.restore()
+  panelStore.restore()
   await loadWorkflows()
 })
 
 onUnmounted(() => {
-  layoutStore.save()
+  panelStore.save()
 })
 </script>
 

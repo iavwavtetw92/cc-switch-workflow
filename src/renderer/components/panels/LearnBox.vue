@@ -3,15 +3,22 @@
     <!-- 工具栏 -->
     <div class="lb-toolbar">
       <span class="lb-title">📝 学习笔记</span>
-      <label class="feishu-toggle">
+      <label class="feishu-toggle" title="同步到飞书文档">
         <input type="checkbox" v-model="syncToFeishu" />
-        <span>同步飞书</span>
+        <span>飞书</span>
       </label>
-      <SkillPicker
-        v-model="activeSkillId"
-        panel-type="learnbox"
-        @run="onAskAi"
-      />
+      <!-- AI 区：选技能 + 执行按钮 -->
+      <div class="lb-ai-bar">
+        <SkillPicker v-model="activeSkillId" panel-type="learnbox" />
+        <button
+          class="lb-ai-btn"
+          :disabled="!activeSkillId || isStreaming"
+          :title="activeSkillId ? '用 AI 处理笔记' : '请先选择技能'"
+          @click="onAskAi"
+        >
+          {{ isStreaming ? '生成中…' : '▶ AI' }}
+        </button>
+      </div>
       <button class="lb-btn save-btn" @click="saveNote">保存</button>
     </div>
 
@@ -22,7 +29,7 @@
       placeholder="开始记录你的学习内容...（支持 Markdown）"
     ></textarea>
 
-    <!-- AI 面板（插入到编辑器下方） -->
+    <!-- AI 面板（在编辑器下方） -->
     <AiPanel
       :visible="aiVisible"
       :text="aiText"
@@ -36,6 +43,8 @@
 
     <!-- 保存提示 -->
     <div class="save-toast" v-if="savedToast">✓ 已保存</div>
+    <!-- 错误提示 -->
+    <div class="err-toast" v-if="errToast">{{ errToast }}</div>
   </div>
 </template>
 
@@ -45,7 +54,6 @@ import { useWorkflowUiStore } from '../../stores/workflowUiStore'
 import { useAi }              from '../../composables/useAi'
 import AiPanel                from '../shared/AiPanel.vue'
 import SkillPicker            from '../shared/SkillPicker.vue'
-import type { Skill }         from '@core/types/ai.types'
 
 const props = defineProps<{ id: string }>()
 
@@ -55,54 +63,65 @@ const { isStreaming, streamText, chatStream, buildMessages, getSkills } = useAi(
 const content       = ref('')
 const syncToFeishu  = ref(false)
 const savedToast    = ref(false)
+const errToast      = ref('')
 const activeSkillId = ref<string | undefined>()
 const aiVisible     = ref(false)
 const aiText        = ref('')
-const skills        = ref<Skill[]>([])
+const skillList     = ref<Array<{ id: string; name: string }>>([])
 
 const activeSkillName = computed(() =>
-  skills.value.find(s => s.id === activeSkillId.value)?.name
+  skillList.value.find(s => s.id === activeSkillId.value)?.name
 )
 
 onMounted(async () => {
   const saved = localStorage.getItem(`learnbox-content-${props.id}`)
   content.value = saved ?? '# 学习笔记\n\n开始记录你的学习内容...\n'
-  skills.value = (await getSkills()).filter(s => s.panelTypes.includes('learnbox'))
+  skillList.value = (await getSkills()).filter(s => s.panelTypes.includes('learnbox'))
 })
 
 // 同步 AI 流式文本
 watch(streamText, (val) => { aiText.value = val })
 
 function saveNote() {
-  localStorage.setItem(`learnbox-content-${props.id}`, content.value)
-  savedToast.value = true
-  setTimeout(() => { savedToast.value = false }, 1500)
+  try {
+    localStorage.setItem(`learnbox-content-${props.id}`, content.value)
+    savedToast.value = true
+    setTimeout(() => { savedToast.value = false }, 1500)
 
-  if (syncToFeishu.value) {
-    window.electronAPI?.mcpInvoke({
-      tool: 'feishu_create',
-      params: {
-        title:   `笔记 - ${new Date().toLocaleDateString('zh-CN')}`,
-        content: content.value,
-      }
-    }).catch(err => console.warn('[LearnBox] 飞书同步失败:', err))
+    if (syncToFeishu.value && window.electronAPI) {
+      window.electronAPI.mcpInvoke({
+        tool:   'feishu_create',
+        params: {
+          title:   `笔记 - ${new Date().toLocaleDateString('zh-CN')}`,
+          content: content.value,
+        },
+      }).catch((err: Error) => {
+        showErr(`飞书同步失败: ${err.message}`)
+      })
+    }
+  } catch (err) {
+    showErr(`保存失败: ${(err as Error).message}`)
   }
 }
 
+function showErr(msg: string) {
+  errToast.value = msg
+  setTimeout(() => { errToast.value = '' }, 3000)
+}
+
 /** 触发 AI 技能 */
-async function onAskAi(skillId: string) {
-  activeSkillId.value = skillId
+async function onAskAi() {
+  if (!activeSkillId.value) return
   aiText.value = ''
   aiVisible.value = true
-
   const messages = buildMessages('请处理以上笔记内容', content.value)
-  await chatStream(messages, skillId)
+  await chatStream(messages, activeSkillId.value)
 }
 
 /** 将 AI 结果追加到笔记末尾 */
 function insertAiResult(text: string) {
-  const skill = skills.value.find(s => s.id === activeSkillId.value)
-  content.value += `\n\n---\n> 🤖 AI ${skill?.name ?? '分析'}\n\n${text}\n`
+  const name = activeSkillName.value ?? 'AI 分析'
+  content.value += `\n\n---\n> 🤖 ${name}\n\n${text}\n`
   saveNote()
   aiVisible.value = false
 }
@@ -136,29 +155,53 @@ watch(
 .lb-toolbar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
+  gap: 6px;
+  padding: 4px 8px;
   background: #181825;
   border-bottom: 1px solid #313244;
   font-size: 12px;
   min-height: 32px;
+  flex-wrap: nowrap;
 }
 
 .lb-title {
   color: #f9e2af;
   font-weight: 600;
-  margin-right: auto;
+  flex-shrink: 0;
 }
 
 .feishu-toggle {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   color: #6c7086;
   cursor: pointer;
   font-size: 11px;
+  flex-shrink: 0;
 }
-.feishu-toggle input { cursor: pointer; }
+.feishu-toggle input { cursor: pointer; width: 12px; height: 12px; }
+
+.lb-ai-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.lb-ai-btn {
+  padding: 3px 9px;
+  border-radius: 5px;
+  font-size: 11px;
+  cursor: pointer;
+  border: 1px solid #7c6af744;
+  background: #1a1a2e;
+  color: #a78bfa;
+  white-space: nowrap;
+  transition: all 0.12s;
+}
+.lb-ai-btn:not(:disabled):hover { border-color: #7c6af7; background: #2d2b55; }
+.lb-ai-btn:disabled { opacity: 0.4; cursor: default; }
 
 .lb-btn {
   padding: 3px 10px;
@@ -169,6 +212,7 @@ watch(
   background: #1e1e2e;
   color: #cdd6f4;
   transition: all 0.12s;
+  flex-shrink: 0;
 }
 .lb-btn:hover { background: #313244; }
 .save-btn { border-color: #89b4fa44; color: #89b4fa; }
@@ -190,25 +234,26 @@ watch(
 }
 .editor-area::placeholder { color: #45475a; }
 
-/* ── 保存提示 ───────────────────────────────────────────── */
-.save-toast {
+/* ── 提示 ───────────────────────────────────────────────── */
+.save-toast,
+.err-toast {
   position: absolute;
   bottom: 12px;
   right: 12px;
-  background: #a6e3a1;
-  color: #1e1e2e;
   font-size: 12px;
   font-weight: 600;
   padding: 4px 12px;
   border-radius: 6px;
-  animation: fadeInOut 1.5s ease;
+  animation: fadeInOut 1.5s ease forwards;
   pointer-events: none;
 }
+.save-toast { background: #a6e3a1; color: #1e1e2e; }
+.err-toast  { background: #f38ba8; color: #1e1e2e; animation-duration: 3s; }
 
 @keyframes fadeInOut {
   0%   { opacity: 0; transform: translateY(4px); }
-  20%  { opacity: 1; transform: translateY(0); }
-  80%  { opacity: 1; }
+  15%  { opacity: 1; transform: translateY(0); }
+  75%  { opacity: 1; }
   100% { opacity: 0; }
 }
 </style>

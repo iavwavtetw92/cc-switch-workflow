@@ -1,164 +1,156 @@
-// Pinia状态管理 - 面板状态
+// ============================================================
+// panelStore — 面板状态唯一真相来源
+// 合并原 panelStore + layoutStore 中的面板相关状态
+// ============================================================
+
 import { defineStore } from 'pinia'
 
-interface PanelState {
-  status: 'idle' | 'running' | 'waiting' | 'error'
-  lastCommand?: string
-  lastOutput?: string
-  cwd?: string
+export type PanelId = 'workbox1' | 'workbox2' | 'learnbox' | 'searchbox1' | 'searchbox2'
+export type PanelStatus = 'idle' | 'running' | 'error'
+export type PanelType   = 'workbox' | 'learnbox' | 'searchbox'
+
+export interface PanelMeta {
+  id:      PanelId
+  label:   string
+  type:    PanelType
+  visible: boolean
+  status:  PanelStatus
+  cwd?:    string
 }
 
-interface PanelInput {
-  type: 'command' | 'data' | 'terminal-output' | 'search-result' | 'mcp-document'
+export interface PanelMessage {
+  type:    'command' | 'data' | 'mcp-result'
   content: string
   source?: string
 }
 
-interface WorkMode {
-  name: string
-  layout: string[]
-  panelConfig: Record<string, any>
-}
+const DEFAULT_PANELS: PanelMeta[] = [
+  { id: 'workbox1',   label: '工作框 1', type: 'workbox',   visible: true, status: 'idle', cwd: 'D:\\' },
+  { id: 'workbox2',   label: '工作框 2', type: 'workbox',   visible: true, status: 'idle', cwd: 'D:\\' },
+  { id: 'learnbox',   label: '学习框',   type: 'learnbox',  visible: true, status: 'idle' },
+  { id: 'searchbox1', label: '搜索 Web', type: 'searchbox', visible: true, status: 'idle' },
+  { id: 'searchbox2', label: '搜索项目', type: 'searchbox', visible: true, status: 'idle' },
+]
 
 export const usePanelStore = defineStore('panel', {
   state: () => ({
-    focusedPanel: 'workbox1',
-    panelStates: {
-      workbox1: { status: 'idle', cwd: 'D:\\' },
-      workbox2: { status: 'idle', cwd: 'D:\\' },
-      learnbox: { status: 'idle' },
-      searchbox1: { status: 'idle' },
-      searchbox2: { status: 'idle' }
-    } as Record<string, PanelState>,
-    panelInputs: {} as Record<string, PanelInput>,
-    workModes: [] as WorkMode[],
-    currentWorkMode: 'default'
+    /** 面板元数据列表（顺序即为显示顺序） */
+    panels: DEFAULT_PANELS as PanelMeta[],
+    /** 当前聚焦的面板 */
+    focusedPanelId: 'workbox1' as PanelId,
+    /** 面板待消费消息（消费后需手动调用 clearMessage） */
+    messages: {} as Record<string, PanelMessage | null>,
   }),
 
+  getters: {
+    /** 当前聚焦面板的元数据 */
+    focusedPanel(state): PanelMeta | undefined {
+      return state.panels.find(p => p.id === state.focusedPanelId)
+    },
+
+    /** 所有工作框面板 */
+    workboxPanels(state): PanelMeta[] {
+      return state.panels.filter(p => p.type === 'workbox')
+    },
+
+    /** 可见面板列表 */
+    visiblePanels(state): PanelMeta[] {
+      return state.panels.filter(p => p.visible)
+    },
+
+    /** 通过 id 取面板元数据 */
+    getPanelById(state) {
+      return (id: string) => state.panels.find(p => p.id === id)
+    },
+  },
+
   actions: {
-    // 设置焦点面板
-    setFocusedPanel(panelId: string) {
-      this.focusedPanel = panelId
+    // ── 焦点 ────────────────────────────────────────────────
+
+    setFocused(id: PanelId) {
+      this.focusedPanelId = id
     },
 
-    // 更新面板状态
-    updateStatus(panelId: string, status: PanelState['status']) {
-      if (this.panelStates[panelId]) {
-        this.panelStates[panelId].status = status
-      }
+    cycleFocus() {
+      const visible = this.panels.filter(p => p.visible)
+      const idx = visible.findIndex(p => p.id === this.focusedPanelId)
+      const next = visible[(idx + 1) % visible.length]
+      if (next) this.focusedPanelId = next.id
     },
 
-    // 发送数据到面板
-    sendToPanel(panelId: string, input: PanelInput) {
-      this.panelInputs[panelId] = input
+    // ── 状态 ────────────────────────────────────────────────
 
-      // 清除输入（触发一次后清除）
-      setTimeout(() => {
-        delete this.panelInputs[panelId]
-      }, 100)
+    updateStatus(id: string, status: PanelStatus) {
+      const panel = this.panels.find(p => p.id === id)
+      if (panel) panel.status = status
     },
 
-    // 执行命令
-    async executeCommand(target: string, command: string) {
-      if (target === 'all') {
-        // 发送到所有工作框
-        this.sendToPanel('workbox1', { type: 'command', content: command })
-        this.sendToPanel('workbox2', { type: 'command', content: command })
-      } else if (target.startsWith('workbox')) {
-        this.sendToPanel(target, { type: 'command', content: command })
-      }
+    // ── 可见性 ──────────────────────────────────────────────
+
+    toggleVisible(id: PanelId) {
+      const panel = this.panels.find(p => p.id === id)
+      if (panel) panel.visible = !panel.visible
     },
 
-    // MCP调用
-    async invokeMCP(tool: string, params: any) {
+    setVisible(id: PanelId, v: boolean) {
+      const panel = this.panels.find(p => p.id === id)
+      if (panel) panel.visible = v
+    },
+
+    // ── 工作目录 ─────────────────────────────────────────────
+
+    setCwd(id: string, cwd: string) {
+      const panel = this.panels.find(p => p.id === id)
+      if (panel) panel.cwd = cwd
+    },
+
+    // ── 消息分发 ─────────────────────────────────────────────
+
+    /** 向指定面板发送消息（面板 watch 后调用 clearMessage） */
+    sendToPanel(id: string, msg: PanelMessage) {
+      this.messages[id] = msg
+    },
+
+    /** 广播命令到所有工作框 */
+    broadcastToWorkboxes(msg: PanelMessage) {
+      this.workboxPanels.forEach(p => {
+        if (p.visible) this.messages[p.id] = { ...msg }
+      })
+    },
+
+    clearMessage(id: string) {
+      this.messages[id] = null
+    },
+
+    // ── 持久化 ──────────────────────────────────────────────
+
+    save() {
+      localStorage.setItem('panel-store', JSON.stringify({
+        focusedPanelId: this.focusedPanelId,
+        panels: this.panels.map(p => ({
+          id:      p.id,
+          visible: p.visible,
+          cwd:     p.cwd,
+        })),
+      }))
+    },
+
+    restore() {
       try {
-        const result = await (window.electronAPI as any)?.mcpInvoke({ tool, params })
-
-        // 根据工具类型处理结果
-        if (tool === 'feishu_search') {
-          this.sendToPanel('searchbox1', {
-            type: 'mcp-document',
-            content: JSON.stringify(result)
+        const raw = localStorage.getItem('panel-store')
+        if (!raw) return
+        const saved = JSON.parse(raw)
+        if (saved.focusedPanelId) this.focusedPanelId = saved.focusedPanelId
+        if (Array.isArray(saved.panels)) {
+          saved.panels.forEach((s: any) => {
+            const p = this.panels.find(p => p.id === s.id)
+            if (p) {
+              if (s.visible !== undefined) p.visible = s.visible
+              if (s.cwd)                   p.cwd     = s.cwd
+            }
           })
-        } else if (tool === 'feishu_read') {
-          this.sendToPanel('learnbox', {
-            type: 'mcp-document',
-            content: result.content || ''
-          })
         }
-
-        return result
-      } catch (e) {
-        console.error('MCP调用失败:', e)
-        return null
-      }
+      } catch { /* 损坏数据忽略 */ }
     },
-
-    // 保存状态
-    saveState() {
-      const state = {
-        focusedPanel: this.focusedPanel,
-        panelStates: this.panelStates,
-        currentWorkMode: this.currentWorkMode
-      }
-      localStorage.setItem('panel-state', JSON.stringify(state))
-    },
-
-    // 加载保存的状态
-    loadSavedState() {
-      const saved = localStorage.getItem('panel-state')
-      if (saved) {
-        const state = JSON.parse(saved)
-        this.focusedPanel = state.focusedPanel || 'workbox1'
-        this.panelStates = state.panelStates || this.panelStates
-        this.currentWorkMode = state.currentWorkMode || 'default'
-      }
-    },
-
-    // 保存工作模式
-    saveWorkMode() {
-      const name = `模式-${Date.now()}`
-      const mode: WorkMode = {
-        name,
-        layout: Object.keys(this.panelStates),
-        panelConfig: {
-          focusedPanel: this.focusedPanel,
-          cwd: {
-            workbox1: this.panelStates.workbox1?.cwd,
-            workbox2: this.panelStates.workbox2?.cwd
-          }
-        }
-      }
-
-      this.workModes.push(mode)
-      localStorage.setItem('work-modes', JSON.stringify(this.workModes))
-    },
-
-    // 加载工作模式
-    loadWorkMode() {
-      const saved = localStorage.getItem('work-modes')
-      if (saved) {
-        this.workModes = JSON.parse(saved)
-      }
-
-      // 应用最后一个模式
-      if (this.workModes.length > 0) {
-        const mode = this.workModes[this.workModes.length - 1]
-        this.currentWorkMode = mode.name
-
-        if (mode.panelConfig.focusedPanel) {
-          this.focusedPanel = mode.panelConfig.focusedPanel
-        }
-
-        if (mode.panelConfig.cwd) {
-          if (mode.panelConfig.cwd.workbox1) {
-            this.panelStates.workbox1.cwd = mode.panelConfig.cwd.workbox1
-          }
-          if (mode.panelConfig.cwd.workbox2) {
-            this.panelStates.workbox2.cwd = mode.panelConfig.cwd.workbox2
-          }
-        }
-      }
-    }
-  }
+  },
 })
