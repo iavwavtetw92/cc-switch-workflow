@@ -3,8 +3,9 @@
     class="wb"
     :class="{ focused: panelStore.focusedPanelId === id }"
     @click="focus"
+    ref="wbEl"
   >
-    <!-- xterm 挂载点 -->
+    <!-- xterm 挂载点：明确给高度，xterm 需要 -->
     <div ref="xtermEl" class="xterm-wrap"></div>
 
     <!-- AI 模式输入栏（叠在下方，平时隐藏） -->
@@ -40,12 +41,12 @@ import { Terminal } from 'xterm'
 import { FitAddon } from 'xterm-addon-fit'
 import { WebLinksAddon } from 'xterm-addon-web-links'
 import { usePanelStore } from '../../stores/panelStore'
-import 'xterm/css/xterm.css'
 
 const props = defineProps<{ id: string }>()
 const panelStore = usePanelStore()
 
 // ── refs ─────────────────────────────────────────────────────
+const wbEl     = ref<HTMLDivElement>()
 const xtermEl  = ref<HTMLDivElement>()
 const aiInputEl = ref<HTMLInputElement>()
 
@@ -103,18 +104,24 @@ function initXterm() {
     fontSize: 13,
     lineHeight: 1.4,
     cursorBlink: true,
-    scrollback: 3000,
+    scrollback: 5000,
     allowTransparency: true,
     convertEol: false,
+    windowsMode: true,   // 正确处理 Windows CRLF
   })
 
   fitAddon = new FitAddon()
   term.loadAddon(fitAddon)
   term.loadAddon(new WebLinksAddon())
   term.open(xtermEl.value)
-  fitAddon.fit()
 
-  // 用户在 xterm 里的键盘输入 → 直接发给 PTY
+  // open() 后需要等下一帧 DOM 稳定再 fit
+  requestAnimationFrame(() => {
+    fitAddon?.fit()
+    term?.focus()
+  })
+
+  // 用户在 xterm 里的键盘输入 → 直接发给 PTY（闭包访问模块级 ptyIdVal）
   term.onData((data: string) => {
     if (ptyIdVal) {
       window.electronAPI.terminalInput({ ptyId: ptyIdVal, data })
@@ -123,16 +130,18 @@ function initXterm() {
 
   // 窗口大小变化时 refit
   const ro = new ResizeObserver(() => {
-    fitAddon?.fit()
-    if (ptyIdVal && term) {
-      window.electronAPI.terminalResize({
-        ptyId: ptyIdVal,
-        cols: term.cols,
-        rows: term.rows,
-      })
-    }
+    requestAnimationFrame(() => {
+      fitAddon?.fit()
+      if (ptyIdVal && term) {
+        window.electronAPI.terminalResize({
+          ptyId: ptyIdVal,
+          cols: term.cols,
+          rows: term.rows,
+        })
+      }
+    })
   })
-  ro.observe(xtermEl.value)
+  ro.observe(wbEl.value!)   // 监听整个工作框，不只是 xterm 容器
   cleanups.push(() => ro.disconnect())
 }
 
@@ -140,7 +149,7 @@ function initXterm() {
 const cleanups: Array<() => void> = []
 
 async function connectPty() {
-  term?.writeln(`\x1b[90m正在连接 ${cwd.value}…\x1b[0m`)
+  term?.writeln(`\x1b[90m正在连接 ${props.id}  ${cwd.value}…\x1b[0m`)
   try {
     const res = await window.electronAPI.terminalCreate({
       boxId: props.id,
@@ -148,20 +157,26 @@ async function connectPty() {
     })
     ptyIdVal = res?.ptyId ?? null
     connected.value = !!ptyIdVal
+
     if (!ptyIdVal) {
-      term?.writeln('\x1b[31m[PTY 创建失败]\x1b[0m')
+      term?.writeln('\x1b[31m[PTY 创建失败，请确认 node-pty 已正确安装]\x1b[0m')
       return
     }
-    // 连接成功，resize 一次
-    if (term && fitAddon) {
-      fitAddon.fit()
+
+    // PTY 就绪后立即同步尺寸（必须在 PTY 接受输入前做）
+    await new Promise<void>(r => requestAnimationFrame(() => {
+      fitAddon?.fit()
+      r()
+    }))
+    if (term) {
       await window.electronAPI.terminalResize({
         ptyId: ptyIdVal,
-        cols: term.cols,
-        rows: term.rows,
+        cols: term.cols || 80,
+        rows: term.rows || 24,
       })
     }
     panelStore.updateStatus(props.id, 'idle')
+    term?.focus()
   } catch (e) {
     term?.writeln(`\x1b[31m[连接失败: ${e}]\x1b[0m`)
   }
@@ -257,9 +272,16 @@ watch(
 
 // ── Lifecycle ─────────────────────────────────────────────────
 onMounted(async () => {
-  initXterm()
+  // 先注册 IPC 监听，再初始化 xterm，再连接 PTY
   window.electronAPI.on('terminal:data', onData)
   window.electronAPI.on('terminal:exit', onExit)
+
+  // nextTick 确保 DOM 完全渲染后再 open xterm
+  await nextTick()
+  initXterm()
+
+  // 稍等 xterm 渲染完毕后再建 PTY（确保 fit 有正确尺寸）
+  await new Promise(r => setTimeout(r, 100))
   await connectPty()
 
   // 加载 provider 名称
@@ -267,8 +289,6 @@ onMounted(async () => {
     const p = await window.electronAPI.ccSwitchCurrent()
     if (p?.name) providerName.value = p.name
   } catch {}
-
-  term?.focus()
 })
 
 onUnmounted(() => {
