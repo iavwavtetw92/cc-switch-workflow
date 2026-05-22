@@ -153,32 +153,67 @@ export class CcSwitchAdapter implements ICcSwitchAdapter {
 
     try {
       const providers = await this.getProviders()
+      // 优先内存记录（switchProvider 写入），其次 DB isActive 字段，最后取第一个
+      if (this._activeProviderId) {
+        return providers.find(p => p.id === this._activeProviderId) ?? providers[0] ?? null
+      }
       return providers.find(p => p.isActive) ?? providers[0] ?? null
     } catch {
       return null
     }
   }
 
+  // 内存中维护当前活跃 provider（当 DB 列不支持时的兜底）
+  private _activeProviderId: string | null = null
+
   async switchProvider(providerId: string): Promise<boolean> {
     if (!(await this.ensureDb())) return false
 
-    try {
-      // 更新激活状态
-      this.db.run('UPDATE providers SET is_active = 0')
-      this.db.run('UPDATE providers SET is_active = 1 WHERE id = ?', [providerId])
+    // 先尝试探测实际列名
+    const activeCol = this.detectActiveColumn()
 
-      // 写回文件（sql.js 需要手动保存）
-      if (this.dbPath) {
-        const { writeFileSync } = require('fs')
-        const data = this.db.export()
-        writeFileSync(this.dbPath, Buffer.from(data))
+    if (activeCol) {
+      try {
+        // 找到实际的 active 列，写 DB
+        const tbl = this.detectProviderTable()
+        if (tbl) {
+          this.db.run(`UPDATE ${tbl} SET ${activeCol} = 0`)
+          this.db.run(`UPDATE ${tbl} SET ${activeCol} = 1 WHERE id = ?`, [providerId])
+          if (this.dbPath) {
+            const { writeFileSync } = require('fs')
+            writeFileSync(this.dbPath, Buffer.from(this.db.export()))
+          }
+        }
+      } catch (err) {
+        console.warn('[CcSwitchAdapter] DB 写入失败，改用内存模式:', err)
       }
-
-      return true
-    } catch (err) {
-      console.error('[CcSwitchAdapter] 切换 provider 失败:', err)
-      return false
+    } else {
+      console.info('[CcSwitchAdapter] DB 无 active 列，使用内存跟踪 active provider')
     }
+
+    // 无论 DB 写成功与否，内存中记录
+    this._activeProviderId = providerId
+    return true
+  }
+
+  private detectProviderTable(): string | null {
+    try {
+      const tables = this.db.exec("SELECT name FROM sqlite_master WHERE type='table'")
+      const names: string[] = (tables[0]?.values ?? []).map((r: any[]) => r[0])
+      return names.find(t =>
+        ['providers', 'provider', 'models', 'model_configs', 'config'].includes(t.toLowerCase())
+      ) ?? null
+    } catch { return null }
+  }
+
+  private detectActiveColumn(): string | null {
+    try {
+      const tbl = this.detectProviderTable()
+      if (!tbl) return null
+      const info = this.db.exec(`PRAGMA table_info(${tbl})`)
+      const cols: string[] = (info[0]?.values ?? []).map((r: any[]) => r[1])
+      return cols.find(c => ['is_active', 'isactive', 'active', 'enabled', 'selected'].includes(c.toLowerCase())) ?? null
+    } catch { return null }
   }
 
   // --------------------------------------------------------
